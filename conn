@@ -162,7 +162,10 @@ def ssh_config_read():
     if readline:
         readline.parse_and_bind("tab: complete")
         comps = []
-        ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config')).readlines()
+        try:
+            ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config')).readlines()
+        except FileNotFoundError:
+            ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config'),'w').readlines()
         for line in ssh_config:
             match = re.search('Host\s+(\S+)',line)
             if match:
