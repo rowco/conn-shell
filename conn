@@ -1,0 +1,208 @@
+#!/usr/bin/env python
+
+#######
+# Conn is a wrapper for SSH and SCREEN. Intended to provide a simple means of running multiple SSH sessions that can easily
+# be moved from one session to another.
+#
+# The script is intended to use only the base-python modules and should have no external requirements.
+
+
+import time,sys,re,os,socket
+import subprocess as sub
+import logging
+import argparse
+
+try:
+    import readline
+except:
+    readline = False
+
+#LOG_FILENAME = '/tmp/completer.log'
+#logging.basicConfig(filename=LOG_FILENAME,
+#                    level=logging.DEBUG,
+#                    )
+
+parser = argparse.ArgumentParser(description='Connection Shell')
+parser.add_argument('host', nargs='?' ,type=str, help='Host to connect to')
+parser.add_argument('--add',type=str,help='Provide a path to a list of devices to import')
+args = parser.parse_args()
+
+class SimpleCompleter(object):
+
+    def __init__(self, options):
+        self.options = sorted(options)
+        return
+
+    def complete(self, text, state):
+        response = None
+        if state == 0:
+            # This is the first time for this text, so build a match list.
+            if text:
+                self.matches = [s
+                                for s in self.options
+                                if s and s.startswith(text)]
+                logging.debug('%s matches: %s', repr(text), self.matches)
+            else:
+                self.matches = self.options[:]
+                logging.debug('(empty input) matches: %s', self.matches)
+
+        # Return the state'th item from the match list,
+        # if we have that many.
+        try:
+            response = self.matches[state]
+        except IndexError:
+            response = None
+        logging.debug('complete(%s, %s) => %s',
+                      repr(text), state, repr(response))
+        return response
+
+def clear():
+    os.system('clear')
+
+
+def menu(host=None):
+
+    if host:
+        return connect(device=host)
+
+    clear()
+
+    # Print the list of screens
+    screen_idx = fetch_and_show_screens()
+
+    #Read input
+    try:
+        r_in = raw_input('#\n# ')
+    except EOFError:
+        print('Exiting.. \n')
+        sys.exit()
+    except:
+        return False
+
+    if not r_in:
+        return False
+
+    try:
+        # Does the input work as a key for existing screens
+        screen = screen_idx[int(r_in)]
+        return connect(pid=screen['pid'],device=screen['name'])
+    except:
+        # Treat it as a hostname to connect to
+        return connect(device=r_in)
+
+
+def connect(device,pid=None):
+
+    if readline:
+        readline.add_history(device)
+    nametab(device)
+
+    if pid:
+        print('Restoring screen {0}'.format(device))
+        command = 'screen -Dr %s' % (pid)
+        proc = sub.Popen(command,shell=True)
+        return proc
+
+    if device:
+        print('trying {0} ...'.format(device))
+        command = 'screen -S {0} -t {0} ssh {0}'.format(device)
+        proc = sub.Popen(command,shell=True)
+        time.sleep(1)
+        if proc.pid:
+            return proc
+        else:
+            del(proc)
+            return False
+
+def nametab(ses=None):
+    if not ses:
+        text = '%s' % socket.gethostname()
+    else:
+        text = ses
+    os.system('echo "\033]0;{0}\007"'.format(text))
+
+def run(cmd):
+    proc = sub.Popen(cmd,shell=True,stdout=sub.PIPE,stderr=sub.PIPE)
+    (stdout,stderr) = proc.communicate()
+    return stdout
+
+def fetch_and_show_screens(sort=None):
+    stdout = run('screen -ls')
+    screens = []
+    print('### {0:11} ###'.format(socket.gethostname().upper()))
+    # Extract the pid and name from the screen -ls command
+    for line in re.split('[\n\r]',str(stdout)):
+        try:
+            screen = {}
+            match = re.compile('(\d+)\.(\S+)').search(line)
+            if not match:
+                continue
+            screen['pid'] = match.group(1)
+            screen['name'] = match.group(2)
+            screen['line'] = line
+            screens.append(screen)
+        except:
+            continue
+    # Print the screens out, sorted by the sort key
+    # Return an index to pid mapping
+    screen_idx = {}
+    for idx,screen in enumerate(sorted(screens)):
+      idx = idx+1
+      screen_idx[idx] = screen
+      print('{0}/{1}'.format(idx,screen['line']))
+
+    if len(screens) < 1:
+        print('No screens open')
+    print('###################')
+    return screen_idx
+
+def ssh_config_read():
+    # Read the SSH config and add to the readline history and tab completions.
+
+    if readline:
+        readline.parse_and_bind("tab: complete")
+        comps = []
+        ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config')).readlines()
+        for line in ssh_config:
+            match = re.search('Host\s+(\S+)',line)
+            if match:
+                readline.add_history(match.group(1))
+                comps.append(match.group(1))
+        readline.set_completer(SimpleCompleter(comps).complete)
+    return comps
+
+def add_ssh_hosts(existing,path):
+    new_hosts = open(path).readlines()
+    ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config'),'a')
+
+    for host in new_hosts:
+        host = host.strip()
+        if host in existing:
+            print("{0} already exists in ssh config".format(host))
+        else:
+            ssh_config.write('Host {0}\n\n'.format(host))
+            print("{0} added to ssh config".format(host))
+    sys.exit()
+
+def main():
+
+    ssh_hosts = ssh_config_read()
+    if args.add:
+        add_ssh_hosts(ssh_hosts,args.add)
+
+    while True:
+        nametab("ConnectShell")
+
+        ses = menu(args.host)
+        #clear the args after first try
+        args.host = None
+
+        if not ses:
+            continue
+        try:
+            ses.communicate()
+        except:
+            raise
+
+if __name__ == '__main__':
+    main()
