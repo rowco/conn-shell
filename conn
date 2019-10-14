@@ -176,7 +176,7 @@ def add_ssh_hosts(existing,path):
     ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config'),'a')
 
     for host in new_hosts:
-        host = host.strip()
+        host = host.strip().lower()
         if host in existing:
             print("{0} already exists in ssh config".format(host))
         else:
