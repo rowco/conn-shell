@@ -17,15 +17,15 @@ try:
 except:
     readline = False
 
-#LOG_FILENAME = '/tmp/completer.log'
-#logging.basicConfig(filename=LOG_FILENAME,
-#                    level=logging.DEBUG,
-#                    )
 
 parser = argparse.ArgumentParser(description='Connection Shell')
 parser.add_argument('host', nargs='?' ,type=str, help='Host to connect to')
 parser.add_argument('--add',type=str,help='Provide a path to a list of devices to import')
+parser.add_argument('--debug',action='store_true',default=False,help='Create a local debug file')
 args = parser.parse_args()
+
+if args.debug:
+    logging.basicConfig(filename='conn.debug',level=logging.DEBUG)
 
 class SimpleCompleter(object):
 
@@ -73,6 +73,9 @@ def menu(host=None):
     #Read input
     try:
         r_in = raw_input('#\n# ')
+    except NameError:
+        # Python 3
+        r_in = input('#\n# ')
     except EOFError:
         print('Exiting.. \n')
         sys.exit()
@@ -124,7 +127,7 @@ def nametab(ses=None):
 def run(cmd):
     proc = sub.Popen(cmd,shell=True,stdout=sub.PIPE,stderr=sub.PIPE)
     (stdout,stderr) = proc.communicate()
-    return stdout
+    return stdout.decode()
 
 def fetch_and_show_screens(sort=None):
     stdout = run('screen -ls')
@@ -188,18 +191,15 @@ def add_ssh_hosts(existing,path):
     sys.exit()
 
 def main():
-
     ssh_hosts = ssh_config_read()
     if args.add:
         add_ssh_hosts(ssh_hosts,args.add)
 
     while True:
         nametab("ConnectShell")
-
         ses = menu(args.host)
         #clear the args after first try
         args.host = None
-
         if not ses:
             continue
         try:
