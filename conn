@@ -14,6 +14,10 @@ import argparse
 
 try:
     import readline
+
+    # Allow dashes to be used in the completer
+    old_delims = readline.get_completer_delims()
+    readline.set_completer_delims(old_delims.replace('-', ''))
 except:
     readline = False
 
@@ -34,6 +38,7 @@ class SimpleCompleter(object):
         return
 
     def complete(self, text, state):
+	logging.debug(text)
         response = None
         if state == 0:
             # This is the first time for this text, so build a match list.
@@ -76,11 +81,13 @@ def menu(host=None):
     except NameError:
         # Python 3
         r_in = input('#\n# ')
+        logging.debug('fallback to "input"')
     except EOFError:
         print('Exiting.. \n')
         sys.exit()
     except:
         return False
+        logging.debug('Unhandled issue on read input')
 
     if not r_in:
         return False
@@ -149,7 +156,7 @@ def fetch_and_show_screens(sort=None):
     # Print the screens out, sorted by the sort key
     # Return an index to pid mapping
     screen_idx = {}
-    for idx,screen in enumerate(sorted(screens,key=lambda x: int(x['pid']))):
+    for idx,screen in enumerate(sorted(screens,key=lambda x: x['name'])):
       idx = idx+1
       screen_idx[idx] = screen
       print('{0}/{1}'.format(idx,screen['line']))
@@ -165,6 +172,8 @@ def ssh_config_read():
     if readline:
         readline.parse_and_bind("tab: complete")
         comps = []
+
+	# config
         try:
             ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/config')).readlines()
         except FileNotFoundError:
@@ -174,6 +183,20 @@ def ssh_config_read():
             if match:
                 readline.add_history(match.group(1))
                 comps.append(match.group(1))
+
+	# known_hosts
+        try:
+            ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/known_hosts')).readlines()
+        except FileNotFoundError:
+            ssh_config = open(os.path.join(os.environ['HOME'],'.ssh/known_hosts'),'w').readlines()
+        for line in ssh_config:
+            logging.debug(line)
+            parts = re.split('[,\s]',line)
+            readline.add_history(parts[0])
+            comps.append(parts[0])
+
+
+
         readline.set_completer(SimpleCompleter(comps).complete)
     return comps
 
